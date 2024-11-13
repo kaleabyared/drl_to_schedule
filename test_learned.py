@@ -236,7 +236,11 @@ def main():
                             while env.itr < cap_horizon:
                                 # t1 = time.time()
                                 batch_data.wrapper(*states)
+
+
                                 actions, _ = policy(batch_data, feasible_actions)
+                                
+                                
                                 states, _, feasible_actions, _ = env.step(actions, dev, plot=show)
                                 # t2 = time.time()
                                 for log_horizon in performance_milestones:
