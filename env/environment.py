@@ -170,10 +170,10 @@ class JsspN5:
             adj_all = self.adj_mat_pc + adj_mat_mc
             dur_mat = np.pad(dur_mat.reshape(-1, 1), ((1, 1), (0, 0)), 'constant', constant_values=0).repeat(self.n_oprs + 2, axis=1)
             edge_weight = np.multiply(adj_all, dur_mat)
-            G = nx.from_numpy_matrix(edge_weight, parallel_edges=False, create_using=nx.DiGraph)  # create nx.DiGraph
+            G = nx.from_numpy_array(edge_weight, parallel_edges=False, create_using=nx.DiGraph)  # create nx.DiGraph
             G.add_weighted_edges_from([(0, i, 0) for i in range(1, self.n_oprs + 2 - 1, self.n_mch)])  # add release time, here all jobs are available at t=0. This is the only way to add release date. And if you do not add release date, startime computation will return wired value
             current_graphs.append(G)
-            G_mc = nx.from_numpy_matrix(adj_mat_mc, parallel_edges=False, create_using=nx.DiGraph)  # create nx.DiGraph
+            G_mc = nx.from_numpy_array(adj_mat_mc, parallel_edges=False, create_using=nx.DiGraph)  # create nx.DiGraph
             sub_graphs_mc.append(G_mc)
 
             if plot:
@@ -260,10 +260,10 @@ class JsspN5:
             adj_all = self.adj_mat_pc + adj_mat_mc
             dur_mat = np.pad(dur_mat.reshape(-1, 1), ((1, 1), (0, 0)), 'constant', constant_values=0).repeat(self.n_oprs + 2, axis=1)
             edge_weight = np.multiply(adj_all, dur_mat)
-            G = nx.from_numpy_matrix(edge_weight, parallel_edges=False, create_using=nx.DiGraph)  # create nx.DiGraph
+            G = nx.from_numpy_array(edge_weight, parallel_edges=False, create_using=nx.DiGraph)  # create nx.DiGraph
             G.add_weighted_edges_from([(0, i, 0) for i in range(1, self.n_oprs + 2 - 1, self.n_mch)])  # add release time, here all jobs are available at t=0. This is the only way to add release date. And if you do not add release date, startime computation will return wired value
             current_graphs.append(G)
-            G_mc = nx.from_numpy_matrix(adj_mat_mc, parallel_edges=False, create_using=nx.DiGraph)  # create nx.DiGraph
+            G_mc = nx.from_numpy_array(adj_mat_mc, parallel_edges=False, create_using=nx.DiGraph)  # create nx.DiGraph
             sub_graphs_mc.append(G_mc)
 
             if plot:

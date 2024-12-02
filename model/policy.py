@@ -68,31 +68,13 @@ class GIN(torch.nn.Module):
         self.GIN_layers = torch.nn.ModuleList()
 
         # init gin layer
-        self.GIN_layers.append(
-            GINConv(
-                Sequential(Linear(in_dim, hidden_dim),
-                           torch.nn.BatchNorm1d(hidden_dim),
-                           ReLU(),
-                           Linear(hidden_dim, hidden_dim)),
-                eps=0,
-                train_eps=False,
-                aggr='mean',
-                flow="source_to_target")
-        )
+        self.GIN_layers.append(GINConv(Sequential(Linear(in_dim, hidden_dim), torch.nn.BatchNorm1d(hidden_dim), ReLU(), Linear(hidden_dim, hidden_dim)),
+                eps=0, train_eps=False, aggr='mean', flow="source_to_target"))
 
         # rest gin layers
         for layer in range(layer_gin - 1):
-            self.GIN_layers.append(
-                GINConv(
-                    Sequential(Linear(hidden_dim, hidden_dim),
-                               torch.nn.BatchNorm1d(hidden_dim),
-                               ReLU(),
-                               Linear(hidden_dim, hidden_dim)),
-                    eps=0,
-                    train_eps=False,
-                    aggr='mean',
-                    flow="source_to_target")
-            )
+            self.GIN_layers.append(GINConv(Sequential(Linear(hidden_dim, hidden_dim), torch.nn.BatchNorm1d(hidden_dim), ReLU(), Linear(hidden_dim, hidden_dim)),
+                    eps=0, train_eps=False, aggr='mean', flow="source_to_target"))
 
     def forward(self, x, edge_index, batch):
 
@@ -125,11 +107,20 @@ class Actor(nn.Module):
                  policy_l=3,
                  embedding_type='gin',
                  heads=4,
-                 dropout=0.6):
+                 dropout=0.6,
+                 is_gready_beam=False,
+                 beam_width=1):
         super(Actor, self).__init__()
         self.embedding_l = embedding_l
         self.policy_l = policy_l
         self.embedding_type = embedding_type
+        self.is_gready_beam = is_gready_beam
+
+        if beam_width in range(1,10): self.beam_width = beam_width
+        else: self.beam_width = 1
+
+        # embedding
+        self.embedding = None
         if self.embedding_type == 'gin':
             self.embedding = GIN(in_dim=in_dim, hidden_dim=hidden_dim, layer_gin=embedding_l)
         elif self.embedding_type == 'dghan':
@@ -144,7 +135,7 @@ class Actor(nn.Module):
         self.policy = torch.nn.ModuleList()
         if policy_l == 1:
             if self.embedding_type == 'gin+dghan':
-                self.policy.append(Sequential(Linear(hidden_dim * 4, hidden_dim),
+                self.policy.append(Sequential(Linear(hidden_dim * 4, hidden_dim), 
                                               # torch.nn.BatchNorm1d(hidden_dim),
                                               torch.nn.Tanh(),
                                               Linear(hidden_dim, hidden_dim)))
@@ -216,6 +207,8 @@ class Actor(nn.Module):
         carries = np.arange(0, batch_size * n_nodes_per_state, n_nodes_per_state)
         a_merge = []  # merge index of actions of all states
         action_count = []  # list of #actions for each state
+
+
         for i in range(len(feasible_actions)):
             action_count.append(len(feasible_actions[i]))
             for j in range(len(feasible_actions[i])):
@@ -230,14 +223,31 @@ class Actor(nn.Module):
         action_score_flat = action_score.reshape(batch_size, 1, -1)
         pi = F.softmax(action_score_flat, dim=-1)
 
-        dist = Categorical(probs=pi)
-        actions_id = dist.sample()
-        ###### actions_id = torch.argmax(pi, dim=-1)  # greedy action
-        sampled_actions = [[actions_id[i].item() // n_nodes_per_state, actions_id[i].item() % n_nodes_per_state] for i in range(len(feasible_actions))]
-        log_prob = dist.log_prob(actions_id)  # log_prob using Pytorch API, this will have a gradient shift, reference: https://github.com/pytorch/pytorch/issues/61727. Used in paper submission version.
-        ###### log_prob = torch.log(torch.gather(pi, -1, actions_id.unsqueeze(-1)) + -1e-7).squeeze(-1)  # log_prob calculated manually, this will not have a gradient shift. Switch to this after paper submission.
-        return sampled_actions, log_prob
+        actions_id, sampled_actions, pi_prob = [], [], []
 
+        if not self.is_gready_beam:
+          dist = Categorical(probs=pi)
+
+          for beam in range(self.beam_width):
+            actions_id.append(dist.sample())
+            sampled_actions.append([[actions_id[beam][i].item() // n_nodes_per_state, actions_id[beam][i].item() % n_nodes_per_state] for i in range(len(feasible_actions))])
+            pi_prob.append(torch.gather(pi, -1, actions_id[0].unsqueeze(-1)).squeeze(-1).detach().numpy())
+
+        else:
+          actions_list = torch.topk(pi, self.beam_width, dim=-1).indices.view(len(feasible_actions),-1)
+          #pi_prob_list = torch.topk(pi, self.beam_width, dim=-1).values.view(len(feasible_actions),-1).cpu().detach().numpy()
+          pi_prob_list = torch.topk(pi, self.beam_width, dim=-1).values.view(len(feasible_actions),-1).detach().numpy()
+
+          for beam in range(self.beam_width):
+            actions_id.append(actions_list[:, beam:beam+1])
+            sampled_actions.append([[actions_id[beam][i].item() // n_nodes_per_state, actions_id[beam][i].item() % n_nodes_per_state] for i in range(len(feasible_actions))])
+            pi_prob.append(pi_prob_list[:, beam:beam+1])
+
+        pi_probs = pi_prob[0]
+        for i in range(1, self.beam_width):
+          pi_probs = np.hstack((pi_probs, pi_prob[i]))
+
+        return sampled_actions, pi_probs
 
 if __name__ == '__main__':
     import random
